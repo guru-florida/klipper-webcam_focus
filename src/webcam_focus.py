@@ -178,7 +178,7 @@ class WebcamFocus:
             focus = max(0, min(250, focus))
             if self.focus != focus:
                 self.focus = focus
-                self.gcode.respond_raw('Focus {0} <= {1}'.format(focus, dist))
+                #self.gcode.respond_raw('Focus {0} <= {1}'.format(focus, dist))
                 self._focus(focus)
 
         return eventtime + UPDATE_TIME
