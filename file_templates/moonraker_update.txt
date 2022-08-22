@@ -1,0 +1,5 @@
+[update_manager webcam_focus]
+type: git_repo
+path: ~/klipper-webcam_focus
+origin: https://github.com/guru_florida/klipper-webcam_focus.git
+is_system_service: False
