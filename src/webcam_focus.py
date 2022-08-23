@@ -6,6 +6,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import subprocess
 import math
+import logging
 import numpy as np
 
 UPDATE_TIME  = 1.0
@@ -274,6 +275,14 @@ class WebcamFocus:
             if len(self.distances) > 1:
                 self.build_focus_mapper()
 
+    def print_points(self):
+        points=[]
+        for d,f in zip(self.distances, self.focals):
+            points.append('{}:{}'.format(d, f))
+        self.gcode.respond_raw('focus_mappings: ' + ', '.join(points))
+
+
+
     def cmd_focus_mapper_show(self, gcmd):
         save_graph=gcmd.get_int('GRAPH', 0)
         dist=gcmd.get_float('D', None)
@@ -290,10 +299,7 @@ class WebcamFocus:
             self.gcode.respond_raw('focal distance %f value %d' % (dist, f))
             return
 
-        points=[]
-        for d,f in zip(self.distances, self.focals):
-            points.append('{}:{}'.format(d, f))
-        self.gcode.respond_raw('focus_mappings: ' + ', '.join(points))
+        self.print_points()
 
         if save_graph > 0:
             try:
@@ -319,17 +325,12 @@ class WebcamFocus:
         ymax=gcmd.get_int('Y_MAX', axes_max[1])
         ystep=gcmd.get_int('Y_STEP', (ymax - ymin) / 10)
         move_speed=gcmd.get_int('MOVE_SPEED', 300)
+        logging.info('focus calibration: Y%d -> Y%d every %d   speed: %d' % (ymin, ymax, ystep, move_speed))
 
         toolhead = self.printer.lookup_object('toolhead')
         if not toolhead:
             self.gcode.respond_raw('cannot get control of the toolhead')
             return
-
-        # make a mapper for machine coord to [0..1] distance
-        # todo: for now just using the coord
-        axes_max = self.kin.axes_max
-        axes_min = self.kin.axes_min
-        dist_mapper = lambda x,y: (y - axes_min[1]) / (axes_max[1] - axes_min[1])
 
         # enable auto-focus
         self.gcode.respond_raw('enabling auto-focus')
@@ -344,8 +345,8 @@ class WebcamFocus:
         self.focals = []
         self.focus_mapper_coeffs = None
         self.focus_mapper = None
-       
-        for p in range(ymin, ymax, 20):
+
+        for p in range(ymin, ymax, ystep):
             # extent position should be far away from test position
             extent_y = 100 if p > 250 else 450
 
@@ -373,6 +374,7 @@ class WebcamFocus:
         if len(self.distances) > 1:
             self.build_focus_mapper()
             self.try_enable_focus_control()
+            self.print_points()
 
         self.gcode.respond_raw('finished auto-focus calibration')
 
