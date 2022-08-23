@@ -286,10 +286,12 @@ class WebcamFocus:
 
         
     def cmd_focus_calibrate(self, gcmd):
-        ymin=gcmd.get_int('Y_MIN', 60)
-        ymax=gcmd.get_int('Y_MAX', 480)
-        ystep=gcmd.get_int('Y_STEP', 20)
-        move_speed=gcmd.get_int('MOVE_SPEED', 600)
+        axes_max = self.kin.axes_max
+        axes_min = self.kin.axes_min
+        ymin=gcmd.get_int('Y_MIN', axes_min[1])
+        ymax=gcmd.get_int('Y_MAX', axes_max[1])
+        ystep=gcmd.get_int('Y_STEP', (ymax - ymin) / 10)
+        move_speed=gcmd.get_int('MOVE_SPEED', 300)
 
         toolhead = self.printer.lookup_object('toolhead')
         if not toolhead:
