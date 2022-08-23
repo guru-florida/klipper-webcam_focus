@@ -43,6 +43,11 @@ def v4l2_query_single(prop_name):
     return None
 
 
+def parse_focal(s):
+    d, f = s.split(':')
+    return float(d), int(f)
+
+
 ######################################################################
 # WebCam Focus
 ######################################################################
@@ -84,27 +89,10 @@ class WebcamFocus:
 
         self.distances = []
         self.focals = []
-        self.focus_mappings = '60.0:220, 80.0:150, 100.0:110, 120.0:100, 140.0:90, 160.0:80, 180.0:80, 200.0:80, 220.0:70, 240.0:70, 260.0:70, 280.0:60, 300.0:60, 320.0:60, 340.0:60, 360.0:60, 380.0:60, 400.0:60, 420.0:60, 440.0:60, 460.0:60'
-
-
-    def parse_focus_mappings(self, fm):
-        axes_max = self.kin.axes_max
-        axes_min = self.kin.axes_min
-        dist_mapper = lambda x,y: (y - axes_min[1]) / (axes_max[1] - axes_min[1])
-        try:
-            mappings = fm.split(',')
-            distances = []
-            focals = []
-            for m in mappings:
-                d, f = m.split(':')
-                distances.append(dist_mapper(0, float(d)))
-                focals.append(int(f))
-
-            self.distances = distances
-            self.focals = focals
-            self.build_focus_mapper()
-        except:
-            self.gcode.respond_raw('cannot parse the focus mappings')
+        fmlist = config.getlists('focus_mappings', [], seps=(',',), count=None, parser=parse_focal, note_valid=True)
+        for x in fmlist:
+            self.distances.append(x[0])
+            self.focals.append(x[1])
 
 
     def build_focus_mapper(self):
@@ -141,9 +129,8 @@ class WebcamFocus:
         self.toolhead = self.printer.lookup_object('toolhead')
         self.kin = self.toolhead.get_kinematics()
 
-        if self.focus_mappings:
-            self.parse_focus_mappings(self.focus_mappings)
-            #self.build_focus_mapper()
+        if len(self.distances) > 1:
+            self.build_focus_mapper()
 
         # register update timers
         #self.displayStatus = self.printer.lookup_object('display_status')
