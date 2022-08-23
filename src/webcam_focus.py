@@ -5,6 +5,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import subprocess
+import math
 import numpy as np
 
 UPDATE_TIME  = 1.0
@@ -47,6 +48,10 @@ def parse_focal(s):
     d, f = s.split(':')
     return float(d), int(f)
 
+def ensure_xyz(tup):
+    return tup + (0.0, 0.0, 0.0)[0:3 - len(tup)]
+
+
 
 ######################################################################
 # WebCam Focus
@@ -64,10 +69,29 @@ class WebcamFocus:
         self.printer = config.get_printer()
         self.gcode   = self.printer.lookup_object('gcode')
         #self.printer.load_object(config, "display_status")
-        #self.min_focus = config.getfloat('min_focus', 0.)
-        #self.max_focus = config.getfloat('max_focus', 255.)
+
+        self.min_focus = config.getint('min_focus', 0)
+        self.max_focus = config.getint('max_focus', 255)
+
+        # read camera position from config and ensure it is 4 values (x,y,z)
+        self.camera_position = ensure_xyz(config.getintlist('camera_position'))
+
+        # read what axis will contribute to focus
+        # we could use all 3, but some axis that are say parallel to the camera don't
+        # actually affect focus so they can be set to 0
+        self.focal_axis = ensure_xyz(config.getfloatlist('focal_axis', [1.0, 1.0, 1.0]))
+
+        self.distances = []
+        self.focals = []
+        fmlist = config.getlists('focus_mappings', [], seps=(',',), count=None, parser=parse_focal, note_valid=True)
+        for x in fmlist:
+            self.distances.append(x[0])
+            self.focals.append(x[1])
+
+
         self.position = [0.0, 0.0, 0.0]
         self.focus = 50
+        self.enable_focus_control = False
         self.stepperTimer     = None
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
         self.gcode.register_command('WEBCAM_SETTINGS',
@@ -87,12 +111,6 @@ class WebcamFocus:
                                     desc=self.cmd_focus_calibrate_help)
         self.shutdown = False
 
-        self.distances = []
-        self.focals = []
-        fmlist = config.getlists('focus_mappings', [], seps=(',',), count=None, parser=parse_focal, note_valid=True)
-        for x in fmlist:
-            self.distances.append(x[0])
-            self.focals.append(x[1])
 
 
     def build_focus_mapper(self):
@@ -151,18 +169,15 @@ class WebcamFocus:
                     for s in self.kin.get_steppers()}
        
         # covert stepper counts to machine coordinates
-        pos = self.kin.calc_position(kin_spos)
+        self.position = self.kin.calc_position(kin_spos)
         
-        for i in range(3):
-            if pos[i] >= self.kin.axes_min[i] and pos[i] <= self.kin.axes_max[i]:
-                self.position[i] = (pos[i] - self.kin.axes_min[i]) / (self.kin.axes_max[i] - self.kin.axes_min[i])
         return eventtime + 0.5
 
     def _updateFocus(self, eventtime):
         if self.focus_mapper is not None:
             dist = self.distance()
             focus = self.focus_mapper(dist)
-            focus = max(0, min(250, focus))
+            focus = max(self.min_focus, min(self.max_focus, focus))
             if self.focus != focus:
                 self.focus = focus
                 #self.gcode.respond_raw('Focus {0} <= {1}'.format(focus, dist))
@@ -170,13 +185,20 @@ class WebcamFocus:
 
         return eventtime + UPDATE_TIME
 
-    def distance(self):
-        y = self.position[1]
-        return y
+    def distance(self, position = None):
+        if position is None:
+            position = self.position
+        while len(position) < 3:
+            position.append(0.0)
 
-    def distance_to_mm(self, d):
-        range = self.kin.axes_max[1] - self.kin.axes_min[1]
-        return d * range
+        # compute distance vector
+        x = (position[0] - self.camera_position[0]) * self.focal_axis[0]
+        y = (position[1] - self.camera_position[1]) * self.focal_axis[1]
+        z = (position[2] - self.camera_position[2]) * self.focal_axis[2]
+
+        # use pythagoreans theorum to get the distance to camera
+        dist = math.sqrt(x*x + y*y + z*z)
+        return dist
 
     def cmd_v4l2(self, gcmd):
         focus_abs=gcmd.get_float('FOCUS_ABSOLUTE', None)
@@ -212,8 +234,7 @@ class WebcamFocus:
         save_graph=gcmd.get_int('GRAPH', 0)
         points=[]
         for d,f in zip(self.distances, self.focals):
-            mm = self.distance_to_mm(d)
-            points.append('{}:{}'.format(mm, f))
+            points.append('{}:{}'.format(d, f))
         self.gcode.respond_raw('focus_mappings: ' + ', '.join(points))
 
         if save_graph > 0:
@@ -283,7 +304,7 @@ class WebcamFocus:
             # record focus
             focus = v4l2_query_single('focus_absolute')
             if focus is not None:
-                d = dist_mapper(point[0], point[1])
+                d = self.distance(point)
                 self.gcode.respond_raw('  focus {}:{}'.format(d, focus))
                 self.distances.append(d)
                 self.focals.append(focus)
