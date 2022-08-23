@@ -70,6 +70,7 @@ class WebcamFocus:
         self.gcode   = self.printer.lookup_object('gcode')
         #self.printer.load_object(config, "display_status")
 
+        self.video_dev = config.get('device', '/dev/video0')
         self.min_focus = config.getint('min_focus', 0)
         self.max_focus = config.getint('max_focus', 255)
 
@@ -359,7 +360,7 @@ class WebcamFocus:
 
 
     def _control(self, key, value):
-        subprocess.call(['v4l2-ctl -d /dev/video0 -c {}={}'.format(key, str(value))], shell=True)
+        subprocess.call(['v4l2-ctl -d {} -c {}={}'.format(self.video_dev, key, str(value))], shell=True)
 
     def _focus(self, value):
         self._control('focus_absolute', value)
