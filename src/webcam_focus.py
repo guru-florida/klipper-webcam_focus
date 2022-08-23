@@ -170,7 +170,9 @@ class WebcamFocus:
         pass
 
     def handle_home_rails_end(self, homing_state, rails):
-        self.try_enable_focus_control()
+        # an axis was homed, try to enable focus control
+        if not self.enable_focus_control:
+            self.try_enable_focus_control()
 
     def home_status(self):
         # note: we only care about axis that are involved in the focal_axis setting
@@ -183,17 +185,27 @@ class WebcamFocus:
         return x_ready and y_ready and z_ready
 
     def try_enable_focus_control(self):
+        if self.enable_focus_control:
+            # already enabled
+            return True
         if self.focus_mapper is None:
+            # no focus mapper points set yet
             return False
 
         if self.home_status():
             # we have the components we need for position derived auto-focus
             self.enable_focus_control = True
-            self.gcode.respond_raw('enabling position derived webcam focus')
             self._focus_auto(False)
+            self.gcode.respond_raw('enabled position derived webcam focus')
             return True
         else:
             return False
+
+    def disable_focus_control(self):
+        if self.enable_focus_control:
+            self.enable_focus_control = False
+            self.gcode.respond_raw('disabled position derived webcam focus')
+
 
     def _pollStepper(self, eventtime):
         # get raw stepper counts (target position)
@@ -265,6 +277,13 @@ class WebcamFocus:
     def cmd_focus_mapper_show(self, gcmd):
         save_graph=gcmd.get_int('GRAPH', 0)
         dist=gcmd.get_float('D', None)
+        enable=gcmd.get_float('ENABLE', None)
+        if enable is not None:
+            if enable:
+                self.try_enable_focus_control()
+            else:
+                self.disable_focus_control()
+            return
         if dist is not None:
             # only show mapping for given distance
             f = self.focus_mapper(dist)
@@ -366,6 +385,8 @@ class WebcamFocus:
         self._control('focus_absolute', value)
 
     def _focus_auto(self, enable):
+        if enable and self.enable_focus_control:
+            self.disable_focus_control()
         self._control('focus_auto', 1 if enable else 0)
 
 
