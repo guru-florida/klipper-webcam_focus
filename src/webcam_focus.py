@@ -141,6 +141,8 @@ class WebcamFocus:
         self.reactor = self.printer.get_reactor()
         self.printer.register_event_handler('klippy:shutdown', 
                                             self._handle_shutdown)
+        self.printer.register_event_handler("homing:home_rails_end",
+                                            self.handle_home_rails_end)
 
         # machine position from kinematics driver
         self.position = [0.0, 0.0, 0.0]
@@ -149,6 +151,9 @@ class WebcamFocus:
 
         if len(self.distances) > 1:
             self.build_focus_mapper()
+
+        # default to auto-focus on while we are not homed
+        self._focus_auto(True)
 
         # register update timers
         #self.displayStatus = self.printer.lookup_object('display_status')
@@ -163,6 +168,32 @@ class WebcamFocus:
         self.shutdown = True
         pass
 
+    def handle_home_rails_end(self, homing_state, rails):
+        self.try_enable_focus_control()
+
+    def home_status(self):
+        # note: we only care about axis that are involved in the focal_axis setting
+        curtime = self.printer.get_reactor().monotonic()
+        kin_status = self.toolhead.get_kinematics().get_status(curtime)
+        home_status = kin_status['homed_axes']
+        x_ready = (self.focal_axis[0] == 0.0) or ('x' in home_status)
+        y_ready = (self.focal_axis[1] == 0.0) or ('y' in home_status)
+        z_ready = (self.focal_axis[2] == 0.0) or ('z' in home_status)
+        return x_ready and y_ready and z_ready
+
+    def try_enable_focus_control(self):
+        if self.focus_mapper is None:
+            return False
+
+        if self.home_status():
+            # we have the components we need for position derived auto-focus
+            self.enable_focus_control = True
+            self.gcode.respond_raw('enabling position derived webcam focus')
+            self._focus_auto(False)
+            return True
+        else:
+            return False
+
     def _pollStepper(self, eventtime):
         # get raw stepper counts (target position)
         kin_spos = {s.get_name(): s.get_commanded_position()
@@ -174,7 +205,7 @@ class WebcamFocus:
         return eventtime + 0.5
 
     def _updateFocus(self, eventtime):
-        if self.focus_mapper is not None:
+        if self.enable_focus_control and self.focus_mapper is not None:
             dist = self.distance()
             focus = self.focus_mapper(dist)
             focus = max(self.min_focus, min(self.max_focus, focus))
@@ -312,6 +343,8 @@ class WebcamFocus:
 
         if len(self.distances) > 1:
             self.build_focus_mapper()
+            self.try_enable_focus_control()
+
         self.gcode.respond_raw('finished auto-focus calibration')
 
 
