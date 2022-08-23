@@ -263,6 +263,13 @@ class WebcamFocus:
 
     def cmd_focus_mapper_show(self, gcmd):
         save_graph=gcmd.get_int('GRAPH', 0)
+        dist=gcmd.get_float('D', None)
+        if dist is not None:
+            # only show mapping for given distance
+            f = self.focus_mapper(dist)
+            self.gcode.respond_raw('focal distance %f value %d' % (dist, f))
+            return
+
         points=[]
         for d,f in zip(self.distances, self.focals):
             points.append('{}:{}'.format(d, f))
