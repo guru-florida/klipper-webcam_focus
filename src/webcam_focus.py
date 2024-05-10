@@ -13,25 +13,25 @@ UPDATE_TIME  = 1.0
 
 def v4l2_query():
     try:
-	lines=subprocess.check_output(['v4l2-ctl','-kl']).split('\n')
-	controls = []
+        lines=subprocess.check_output(['v4l2-ctl','-kl']).split('\n')
+        controls = []
         valueof = lambda x: int(x) if x.isdigit() else x
-	for line in lines:
+        for line in lines:
             try:
-		left, right = line.split(':')
-		prop_name, prop_id, dtype = left.split()
-		properties = [p.split('=') for p in right.split()]
+                left, right = line.split(':')
+                prop_name, prop_id, dtype = left.split()
+                properties = [p.split('=') for p in right.split()]
                 props = {p[0]:valueof(p[1]) for p in properties}
-		obj = {
-			'name': prop_name,
-			'id': prop_id,
-			'type': dtype
-		}
+                obj = {
+                    'name': prop_name,
+                    'id': prop_id,
+                    'type': dtype
+                }
                 obj.update(props)
-		controls.append(obj)
+                controls.append(obj)
             except:
                 pass
-	return controls
+        return controls
     except:
         return None
 
